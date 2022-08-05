@@ -15,16 +15,10 @@
     }
 
     canvas {
-      image-rendering: optimizeSpeed;
-      image-rendering: -moz-crisp-edges;
-      image-rendering: -o-crisp-edges;
-      image-rendering: -webkit-optimize-contrast;
-      image-rendering: optimize-contrast;
-      image-rendering: crisp-edges;
       image-rendering: pixelated;
-      -ms-interpolation-mode: nearest-neighbor;
-      width: 128px;
-      height: 128px;
+      image-rendering: crisp-edges;
+      width: 256px;
+      height: 256px;
     }
   </style>
 </head>
@@ -37,6 +31,7 @@ uniform vec3 u_lightWorldPos;
 uniform mat4 u_world;
 uniform mat4 u_viewInverse;
 uniform mat4 u_worldInverseTranspose;
+uniform vec3 u_position;
 
 attribute vec4 position;
 attribute vec3 normal;
@@ -49,11 +44,12 @@ varying vec3 v_surfaceToLight;
 varying vec3 v_surfaceToView;
 
 void main() {
+  vec4 final_position = position + vec4(u_position, 0.0);
   v_texCoord = texcoord;
-  v_position = u_worldViewProjection * position;
+  v_position = u_worldViewProjection * (final_position);
   v_normal = (u_worldInverseTranspose * vec4(normal, 0)).xyz;
-  v_surfaceToLight = u_lightWorldPos - (u_world * position).xyz;
-  v_surfaceToView = (u_viewInverse[3] - (u_world * position)).xyz;
+  v_surfaceToLight = u_lightWorldPos - (u_world * final_position).xyz;
+  v_surfaceToView = (u_viewInverse[3] - (u_world * final_position)).xyz;
   gl_Position = v_position;
 }
   </script>
@@ -70,9 +66,7 @@ uniform vec4 u_lightColor;
 uniform vec4 u_ambient;
 uniform sampler2D u_diffuse;
 uniform sampler2D u_diffuse2;
-uniform vec4 u_specular;
 uniform float u_shininess;
-uniform float u_specularFactor;
 
 vec4 lit(float l ,float h, float m) {
   return vec4(1.0,
@@ -95,8 +89,7 @@ void main() {
   vec4 litR = lit(dot(a_normal, surfaceToLight),
                     dot(a_normal, halfVector), u_shininess);
   vec4 outColor = vec4((
-  u_lightColor * (diffuseColor * litR.y + diffuseColor * u_ambient +
-                u_specular * litR.z * u_specularFactor)).rgb,
+  u_lightColor * (diffuseColor * litR.y + diffuseColor * u_ambient)).rgb,
       diffuseColor.a);
  gl_FragColor = outColor;
 }

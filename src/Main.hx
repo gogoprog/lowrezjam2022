@@ -51,6 +51,9 @@ abstract Point(Array<Float>) from Array<Float> to Array<Float> {
     public function copyFrom(other:Point) {
         this[0] = other[0]; this[1] = other[1]; this[2] = other[2];
     }
+    public function set(x, y, z) {
+        this[0] = x; this[1] = y; this[2] = z;
+    }
 }
 
 
@@ -79,6 +82,12 @@ class World {
 
     public function new() {
         /* set(0, 0, 0); */
+        for(i in -10...10) {
+            for(j in -10...10) {
+                set(i, 0, j);
+            }
+        }
+
         for(i in 0...10) {
             var x = Std.random(20) - 10;
             var y = Std.random(5);
@@ -105,27 +114,20 @@ class Main {
         window.onload = ()->new Main();
     }
 
+    var canvas :js.html.CanvasElement;
+    var blockSize = 2;
     var camera = new Camera();
-    var mouse = new Point(0, 0, 0);
-    var previousMouse = new Point(0, 0, 0);
+    var mouseMove = new Point(0, 0, 0);
 
     var world = new World();
 
     var keys:Dynamic = {};
 
     function new() {
-        var canvas:js.html.CanvasElement = cast document.getElementById("c");
-        canvas.width = canvas.height = 1024;
-        canvas.onmousemove = canvas.onmousedown = canvas.onmouseup = onMouseMove;
-        canvas.onmouseenter = function(e) {
-            /* previousMouse.x = e.clientX; */
-            /* previousMouse.y = e.clientY; */
-        }
-        untyped onkeydown = onkeyup = function(e) {
-            keys[e.key] = e.type[3] == 'd';
-        }
-        canvas.oncontextmenu = e->false;
-        var gl:js.html.webgl.WebGL2RenderingContext = canvas.getContext("webgl");
+        canvas = cast document.getElementById("c");
+        canvas.width = canvas.height = 64;
+        setupControls();
+        var gl:js.html.webgl.WebGL2RenderingContext = canvas.getContext("webgl2");
         var programInfo = twgl.createProgramInfo(gl, ["vs", "fs"]);
         var arrays = {
             position: [1, 1, -1, 1, 1, 1, 1, -1, 1, 1, -1, -1, -1, 1, 1, -1, 1, -1, -1, -1, -1, -1, -1, 1, -1, 1, 1, 1, 1, 1, 1, 1, -1, -1, 1, -1, -1, -1, -1, 1, -1, -1, 1, -1, 1, -1, -1, 1, 1, 1, 1, -1, 1, 1, -1, -1, 1, 1, -1, 1, -1, 1, -1, 1, 1, -1, 1, -1, -1, -1, -1, -1],
@@ -133,6 +135,7 @@ class Main {
             texcoord: [1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1],
             indices:  [0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7, 8, 9, 10, 8, 10, 11, 12, 13, 14, 12, 14, 15, 16, 17, 18, 16, 18, 19, 20, 21, 22, 20, 22, 23],
         };
+        var u_positionLoc = gl.getUniformLocation(programInfo.program, "u_position");
         var bufferInfo = twgl.createBufferInfoFromArrays(gl, arrays);
         var tex = twgl.createTexture(gl, {
             min: WebGL.NEAREST,
@@ -153,9 +156,7 @@ class Main {
             u_lightWorldPos: [1, 80, -10],
             u_lightColor: [1, 0.8, 0.8, 1],
             u_ambient: [0.3, 0.3, 0.3, 1],
-            u_specular: [1, 1, 1, 1],
-            u_shininess: 50,
-            u_specularFactor: 1,
+            u_shininess: 20,
             u_diffuse: tex,
             u_diffuse2: tex2,
             u_diffuse3: tex3,
@@ -165,7 +166,6 @@ class Main {
             u_worldInverseTranspose: null,
         };
         function render(time:Float) {
-            twgl.resizeCanvasToDisplaySize(gl.canvas);
             gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
             gl.enable(WebGL.DEPTH_TEST);
             gl.enable(WebGL.CULL_FACE);
@@ -179,18 +179,21 @@ class Main {
             var view = m4.inverse(camera.matrix);
             var viewProjection = m4.multiply(projection, view);
             gl.useProgram(programInfo.program);
+            var worldMatrix = m4.identity();
+            uniforms.u_viewInverse = camera.matrix;
+            uniforms.u_world = worldMatrix;
+            uniforms.u_worldInverseTranspose = m4.transpose(m4.inverse(worldMatrix));
+            uniforms.u_worldViewProjection = m4.multiply(viewProjection, worldMatrix);
             twgl.setBuffersAndAttributes(gl, programInfo, bufferInfo);
-            var s = 1;
+            twgl.setUniforms(programInfo, uniforms);
+            var s = blockSize;
+            var position = new Point(0, 0, 0);
 
             for(x => mapx in world.map) {
                 for(y => mapy in mapx) {
                     for(z=> value in mapy) {
-                        var world = m4.translation([x*s, y*z, z*s]);
-                        uniforms.u_viewInverse = camera.matrix;
-                        uniforms.u_world = world;
-                        uniforms.u_worldInverseTranspose = m4.transpose(m4.inverse(world));
-                        uniforms.u_worldViewProjection = m4.multiply(viewProjection, world);
-                        twgl.setUniforms(programInfo, uniforms);
+                        position.set(x*s, y*s, z*s);
+                        gl.uniform3fv(u_positionLoc, position);
                         gl.drawElements(WebGL.TRIANGLES, bufferInfo.numElements, WebGL.UNSIGNED_SHORT, 0);
                     }
                 }
@@ -205,25 +208,27 @@ class Main {
         js.Browser.window.requestAnimationFrame(loop);
     }
 
-    function onMouseMove(e) {
-        if(e.buttons == 2) {
-            mouse.x = e.clientX;
-            mouse.y = e.clientY;
-        } else {
-            mouse.x = e.clientX;
-            mouse.y = e.clientY;
-            previousMouse.x = e.clientX;
-            previousMouse.y = e.clientY;
+    function setupControls() {
+        canvas.onclick = e->canvas.requestPointerLock();
+        canvas.onmousemove = onMouseMove;
+        untyped onkeydown = onkeyup = function(e) {
+            keys[e.key] = e.type[3] == 'd';
         }
+        canvas.oncontextmenu = e->false;
+    }
+
+    function onMouseMove(e) {
+        mouseMove.x += e.movementX;
+        mouseMove.y += e.movementY;
     }
 
     function processControls() {
         var sensitivity = 0.01;
         var speed = 0.15;
-        var deltaMouse = mouse - previousMouse;
-        camera.yaw -= deltaMouse.x * sensitivity;
-        camera.pitch -= deltaMouse.y * sensitivity;
-        previousMouse.copyFrom(mouse);
+        camera.yaw -= mouseMove.x * sensitivity;
+        camera.pitch -= mouseMove.y * sensitivity;
+        camera.pitch = Math.min(Math.max(camera.pitch, -1), 1);
+        mouseMove.set(0, 0, 0);
         var direction:Point = m4.getAxis(camera.matrix, 2);
         var lateral_direction:Point = m4.getAxis(camera.matrix, 0);
 
